@@ -52,18 +52,37 @@ def webhook():
 
     for event in events:
         if event["type"] == "message":
-            text = event["message"]["text"]
+            text = event["message"]["text"].strip()
             reply_token = event["replyToken"]
 
+            # ✅ ตรวจสอบคำสั่ง /list
+            if text.lower() == "/list":
+                with sqlite3.connect("database.db") as conn:
+                    cursor = conn.execute("SELECT detail, due_date FROM tasks ORDER BY due_date ASC")
+                    rows = cursor.fetchall()
+
+                if not rows:
+                    reply_to_line(reply_token, "📂 ไม่มีรายการที่บันทึกไว้")
+                else:
+                    message = "📋 รายการทั้งหมด:\n"
+                    for i, (detail, due_date) in enumerate(rows[:5], start=1):
+                        message += f"{i}. ครบกำหนด {due_date}:\n- {detail[:80]}\n\n"
+                    if len(rows) > 5:
+                        message += f"...และอีก {len(rows)-5} รายการ"
+                    reply_to_line(reply_token, message)
+                return jsonify({"status": "ok"})
+
+            # ✅ ตรวจสอบข้อความทั่วไป
             due_date = extract_date(text)
             if due_date:
                 with sqlite3.connect("database.db") as conn:
                     conn.execute("INSERT INTO tasks (detail, due_date) VALUES (?, ?)",
                                  (text, due_date.strftime("%Y-%m-%d")))
+
                 msg = f"📌 ตรวจพบภารกิจใหม่\nครบกำหนด: {due_date.strftime('%-d %b %Y')}\nระบบจะแจ้งเตือนล่วงหน้า"
                 reply_to_line(reply_token, msg)
             else:
-                pass
+                reply_to_line(reply_token, "📭 ไม่พบวันที่ครบกำหนดในข้อความ")
     
     return jsonify({"status": "ok"})
 
